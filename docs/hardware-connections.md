@@ -2,7 +2,7 @@
 
 This document records the pin connections shown in the supplied circuit diagram.
 
-The circuit wiring diagram is included in the downloadable project ZIP at `docs/images/circuit-wiring.png`. It is not yet committed to this GitHub repository.
+![CitySync RT+ Circuit Wiring](images/circuit-wiring.webp)
 
 ## Raspberry Pi 4 Pin Connections
 
