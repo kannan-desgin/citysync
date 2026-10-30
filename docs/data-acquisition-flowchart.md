@@ -2,7 +2,7 @@
 
 The flowchart illustrates the sensor acquisition threads, message preparation, QNX message passing, TwinSync validation, and CLI output.
 
-The PNG version of this flowchart is included in the downloadable project ZIP at `docs/images/data-acquisition-flowchart.png`. It is not yet committed to this GitHub repository.
+![CitySync RT+ Data Acquisition Flowchart](images/data-acquisition-flowchart.webp)
 
 ## Flow Summary
 
