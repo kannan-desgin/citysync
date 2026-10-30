@@ -112,7 +112,7 @@ Defined in `include/citysync_types.h`.
 | `CITYSYNC_MSG_UPDATE_FLAME` | `CitySyncFlameMessage` | Dedicated flame message type |
 | `CITYSYNC_MSG_SENSOR_STATUS` | `CitySyncSensorStatusMessage` | Sensor health/error notification |
 
-TwinSync currently processes standard updates, sensor-status messages, and state requests. Fire acquisition uses subsystem ID 5 through the standard update path. Latency calculations require acquisition and TwinSync timestamps to use the same `CLOCK_MONOTONIC` clock domain.
+TwinSync currently processes standard updates, sensor-status messages, and state requests. The current DataAcquisition implementation sends Fire readings using `CITYSYNC_MSG_UPDATE_FLAME`, but the TwinSync receive loop does not yet implement that message handler. Fire updates therefore require an integration fix before end-to-end operation. Latency calculations require acquisition and TwinSync timestamps to use the same `CLOCK_MONOTONIC` clock domain.
 
 ## Repository layout
 
@@ -131,10 +131,7 @@ citysync/
 ├── docs/
 │   ├── architecture/system-architecture.md
 │   ├── data-acquisition-flowchart.md
-│   ├── hardware-connections.md
-│   └── images/
-│       ├── circuit-wiring.png
-│       └── data-acquisition-flowchart.png
+│   └── hardware-connections.md
 ├── .gitignore
 └── README.md
 ```
@@ -157,7 +154,7 @@ citysync/
 The code also uses standard C library functions.
 
 ## Hardware connections
-See [hardware-connections.md](docs/hardware-connections.md) and the wiring image under [docs/images](docs/images/).
+See [hardware-connections.md](docs/hardware-connections.md) for the pin table and electrical notes. The wiring diagram and data-acquisition flowchart PNG files are included in the downloadable project ZIP under `docs/images/`; they have not yet been committed to this GitHub repository.
 
 **Electrical warning:** HC-SR04 ECHO is a 5 V signal, while Raspberry Pi GPIO inputs are not 5 V tolerant. Use a suitable voltage divider or logic-level shifter before GPIO24. Connect grounds together and verify each module's supply requirements.
 
