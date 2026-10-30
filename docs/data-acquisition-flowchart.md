@@ -2,7 +2,7 @@
 
 The flowchart illustrates the sensor acquisition threads, message preparation, QNX message passing, TwinSync validation, and CLI output.
 
-![Data acquisition flowchart](images/data-acquisition-flowchart.png)
+The PNG version of this flowchart is included in the downloadable project ZIP at `docs/images/data-acquisition-flowchart.png`. It is not yet committed to this GitHub repository.
 
 ## Flow Summary
 
