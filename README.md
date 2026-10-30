@@ -12,6 +12,14 @@ CitySync RT+ is a real-time sensor-monitoring and synchronization project target
 - Distinguish `UNAVAILABLE`, `ACTIVE`, and `STALE` data.
 - Report sensor faults and synchronization performance.
 
+## Project Images
+
+### Circuit Wiring
+![CitySync RT+ Circuit Wiring](docs/images/circuit-wiring.webp)
+
+### Data Acquisition Flowchart
+![CitySync RT+ Data Acquisition Flowchart](docs/images/data-acquisition-flowchart.webp)
+
 ## Architecture
 
 ```mermaid
@@ -131,7 +139,10 @@ citysync/
 ├── docs/
 │   ├── architecture/system-architecture.md
 │   ├── data-acquisition-flowchart.md
-│   └── hardware-connections.md
+│   ├── hardware-connections.md
+│   └── images/
+│       ├── circuit-wiring.webp
+│       └── data-acquisition-flowchart.webp
 ├── .gitignore
 └── README.md
 ```
@@ -154,7 +165,7 @@ citysync/
 The code also uses standard C library functions.
 
 ## Hardware connections
-See [hardware-connections.md](docs/hardware-connections.md) for the pin table and electrical notes. The wiring diagram and data-acquisition flowchart PNG files are included in the downloadable project ZIP under `docs/images/`; they have not yet been committed to this GitHub repository.
+See [hardware-connections.md](docs/hardware-connections.md) for the pin table and electrical notes. The compressed circuit wiring and data-acquisition flowchart images are stored in `docs/images/` and displayed above.
 
 **Electrical warning:** HC-SR04 ECHO is a 5 V signal, while Raspberry Pi GPIO inputs are not 5 V tolerant. Use a suitable voltage divider or logic-level shifter before GPIO24. Connect grounds together and verify each module's supply requirements.
 
