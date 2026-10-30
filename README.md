@@ -1,126 +1,118 @@
-# CitySync RT+ — QNX Real-Time Sensor Monitoring and Digital Twin Synchronization
+# CitySync RT+ — QNX Real-Time City Monitoring and Digital Twin Synchronization
 
-CitySync RT+ is a real-time sensor-monitoring and synchronization project targeting **QNX SDP 8.0 on Raspberry Pi 4**. It acquires physical sensor data, transports readings through QNX Native Message Passing, maintains a latest-state representation, and reports sensor freshness, faults, and timing performance.
+CitySync RT+ is a QNX SDP 8.0 application targeting Raspberry Pi 4. It collects data from five sensor domains, transfers updates through QNX native message passing, maintains a synchronized latest-state view, detects stale or failed sensor data, reports timing performance, and controls three independent LED alert outputs.
 
-> **Project status:** This repository packages the project sources and documentation. Build and hardware behavior must be verified on the target Raspberry Pi 4 running QNX SDP 8.0. Inclusion here does not imply successful compilation or hardware validation.
+> **Project status:** The repository contains the updated source and project documentation. Compilation and behaviour must be verified on the target hardware. Publishing the source is not proof of a successful build, hardware validation, or measured real-time performance.
 
 ## Project goals
-- Acquire readings from five sensor domains.
-- Send updates from the acquisition process to TwinSync.
-- Validate message type, size, subsystem ID, validity, finite values, and sequence ordering.
-- Maintain the latest accepted state for each subsystem.
-- Distinguish `UNAVAILABLE`, `ACTIVE`, and `STALE` data.
-- Report sensor faults and synchronization performance.
+- Acquire sensor readings from Fire, Water, Current/Energy, Traffic, and Temperature.
+- Transfer messages from DataAcquisition to TwinSync.
+- Validate messages and reject invalid or out-of-order updates.
+- Maintain latest subsystem and Fire states.
+- Distinguish UNAVAILABLE, ACTIVE, and STALE data.
+- Report sensor faults and timing performance.
+- Drive three independent local LED alerts.
 
-## Project Images
-
-### Circuit Wiring
-![CitySync RT+ Circuit Wiring](docs/images/circuit-wiring.webp)
-
-### Data Acquisition Flowchart
-![CitySync RT+ Data Acquisition Flowchart](docs/images/data-acquisition-flowchart.webp)
+## Project images
+### Circuit wiring
+![Circuit wiring](docs/images/circuit-wiring.webp)
+### Data acquisition flowchart
+![Data acquisition flowchart](docs/images/data-acquisition-flowchart.webp)
 
 ## Architecture
 
-```mermaid
-flowchart LR
-  subgraph HW["Raspberry Pi 4 / Sensor Hardware"]
-    IR["IR sensor"]
-    FL["Flame sensor"]
-    US["HC-SR04"]
-    ADC["PCF8591 ADC"]
-    LM["LM35"]
-    POT["Potentiometer"]
-  end
-  subgraph DA["DataAcquisition.c"]
-    INIT["GPIO / I2C initialization"]
-    THREADS["Five sensor acquisition threads"]
-    PACK["Prepare sensor messages"]
-  end
-  subgraph QNX["QNX Native Message Passing"]
-    OPEN["name_open()"]
-    SEND["MsgSend()"]
-    RECEIVE["MsgReceive()"]
-    REPLY["MsgReply()"]
-  end
-  subgraph TS["TwinSync.c"]
-    VALID["Message validation"]
-    STATE["Latest subsystem state"]
-    FAULT["Freshness and fault monitoring"]
-    PERF["Latency / jitter / deadline statistics"]
-    CLI["CLI monitoring output"]
-  end
-  IR --> THREADS
-  FL --> THREADS
-  US --> THREADS
-  ADC --> THREADS
-  LM --> THREADS
-  POT --> THREADS
-  INIT --> THREADS
-  THREADS --> PACK
-  OPEN --> SEND
-  PACK --> SEND
-  SEND --> RECEIVE
-  RECEIVE --> VALID
-  VALID --> STATE
-  STATE --> FAULT
-  STATE --> PERF
-  STATE --> CLI
-  STATE --> REPLY
-```
+The current implementation has **two application processes**:
 
-### DataAcquisition.c
-Initializes GPIO and PCF8591/I2C interfaces, opens the named TwinSync connection with `name_open()`, starts sensor threads, samples sensors at configured intervals, and sends messages containing subsystem ID, sequence, timestamp, value, and validity.
+1. **DataAcquisition** — initializes GPIO/I2C, creates five sensor worker threads, reads sensors, controls LEDs, timestamps readings, and sends messages.
+2. **TwinSync** — registers the QNX named channel, receives and validates messages, maintains subsystem and Fire state, monitors freshness, and prints dashboard/performance output.
 
-### TwinSync.c
-Registers the `CitySyncTwin` channel with `name_attach()`, receives messages using `MsgReceive()`, validates input, rejects malformed or out-of-order updates, maintains the latest state, refreshes freshness, reports performance, and answers `CITYSYNC_MSG_GET_STATE` requests.
+DataAcquisition has its main thread plus five sensor threads: Fire, Water, Current, Vehicle, and Temperature. TwinSync handles messages and timer pulses in its main receive loop. LED outputs are driven inside existing acquisition threads, not extra processes or worker threads.
 
 ## Sensor mapping
 
-| Subsystem ID | Domain | Sensor/input | Meaning |
-|---:|---|---|---|
-| 1 | Traffic | IR sensor | Vehicle detection |
-| 2 | Energy | PCF8591 AIN1 + potentiometer | Simulated current input |
-| 3 | Water | HC-SR04 ultrasonic sensor | Distance; calibration needed for water level |
-| 4 | Environment | LM35 via PCF8591 AIN0 | Temperature |
-| 5 | Fire | Flame sensor | Fire detection |
+| Subsystem | Input | Connection | Data |
+|---|---|---|---|
+| Fire | Flame sensor | GPIO27 | FIRE / CLEAR |
+| Water | HC-SR04 | TRIG GPIO23, ECHO GPIO24 | Distance in cm |
+| Energy / Current | PCF8591 AIN1 + potentiometer | AIN1 | Simulated current in mA |
+| Traffic | IR sensor | GPIO17 | Vehicle count |
+| Environment | LM35 via PCF8591 | AIN0 | Temperature °C |
 
-The current input is potentiometer-based simulation, not a calibrated current measurement. HC-SR04 measures distance; water level requires a known tank reference and calibration.
+The potentiometer is a test input scaled in software to simulated 0–5000 mA; it is not a calibrated current sensor. HC-SR04 reports distance, not water level. Calculating tank water height requires a known reference height and calibration. Flame and IR inputs are configured active-low.
 
-## Sampling and timing configuration
+## LED alert outputs
 
-| Domain | Sampling interval | Proposed priority | Deadline tolerance | Stale timeout |
-|---|---:|---:|---:|---:|
-| Fire | 100 ms | 60 | 50 ms | 500 ms |
-| Water | 300 ms | 55 | 50 ms | 900 ms |
-| Energy/current | 200 ms | 50 | 50 ms | 600 ms |
-| Traffic/vehicle | 500 ms | 45 | 50 ms | 1500 ms |
-| Environment/temperature | 1000 ms | 40 | 100 ms | 3000 ms |
-| TwinSync | — | 35 | — | — |
-| Monitoring | — | 30 | — | — |
-| Diagnostics | — | 10 | — | — |
+| LED | BCM GPIO | Physical pin | ON condition |
+|---|---:|---:|---|
+| LED1 — Fire | GPIO5 | 29 | Flame sensor indicates detection |
+| LED2 — Water / distance | GPIO6 | 31 | Valid measured ultrasonic distance > 30 cm |
+| LED3 — Current | GPIO13 | 33 | Simulated current > 1500 mA |
 
-These are configured/proposed values, not proof that QNX granted the priorities. Verify the effective scheduling policy and runtime priority. The 20 ms latency target is a monitoring threshold, not a guaranteed worst-case bound.
+A dedicated QNX mutex protects the independent LED states and GPIO writes. Multiple LEDs may remain ON simultaneously. All outputs initialize OFF and are turned OFF during normal shutdown.
 
-## Fault and freshness states
-- **UNAVAILABLE:** no valid reading has been accepted, or a failed state has been reported.
-- **ACTIVE:** a valid reading exists and is within its freshness timeout.
-- **STALE:** a previously accepted reading exceeded its timeout, or an ultrasonic `NO_ECHO` status marked it stale.
+**Threshold interpretation:** LED2 responds to sensor-to-surface distance greater than 30 cm, not water height greater than 30 cm. For a sensor mounted above a tank, greater distance normally means a lower water surface. Convert distance using tank geometry before presenting this as a high-water-level alarm. LED3 uses potentiometer-derived simulated current, not calibrated current measurement.
 
-A stale value does not necessarily mean the sensor is physically disconnected. No-echo can result from range, alignment, surface, wiring, or sensor conditions.
+### LED wiring
+Use one 2.2 kΩ series resistor per LED:
+- GPIO5 → 2.2 kΩ → LED1 anode; cathode → GND.
+- GPIO6 → 2.2 kΩ → LED2 anode; cathode → GND.
+- GPIO13 → 2.2 kΩ → LED3 anode; cathode → GND.
 
-## Message protocol
+A 2.2 kΩ resistor is a conservative indicator choice for 3.3 V GPIO; brightness depends on the LED. Never connect an LED directly to GPIO without a series resistor.
 
-Defined in `include/citysync_types.h`.
+See [LED indicator logic](docs/led-indicator-logic.md) and [hardware connections](docs/hardware-connections.md).
+
+## Sampling and scheduling configuration
+
+| Sensor thread | Sampling interval [Cfg] | Requested SCHED_FIFO priority [Cfg] |
+|---|---:|---:|
+| Fire | 100 ms | 60 |
+| Water | 300 ms | 55 |
+| Current | 200 ms | 50 |
+| Vehicle | 500 ms | 45 |
+| Temperature | 1000 ms | 40 |
+| TwinSync main receive loop | — | 63 |
+
+The TwinSync monitor timer sends a pulse with priority 10. This is pulse delivery priority, not a separate application thread. Monitoring/diagnostics priority constants do not mean extra worker threads currently exist. Priority values are requests; confirm success from target startup output. The configured 20 ms latency threshold is a monitoring target, not a guaranteed worst-case bound.
+
+## QNX message protocol
 
 | Message | Structure | Purpose |
 |---|---|---|
-| `CITYSYNC_MSG_UPDATE` | `CitySyncMessage` | Standard subsystem reading |
-| `CITYSYNC_MSG_GET_STATE` | `CitySyncRequest` | Latest state request |
-| `CITYSYNC_MSG_UPDATE_FLAME` | `CitySyncFlameMessage` | Dedicated flame message type |
-| `CITYSYNC_MSG_SENSOR_STATUS` | `CitySyncSensorStatusMessage` | Sensor health/error notification |
+| CITYSYNC_MSG_UPDATE | CitySyncMessage | Traffic, Current, Water-distance, Temperature |
+| CITYSYNC_MSG_UPDATE_FLAME | CitySyncFlameMessage | Dedicated Flame detected / clear update |
+| CITYSYNC_MSG_SENSOR_STATUS | CitySyncSensorStatusMessage | OK, FAILED, Water NO_ECHO |
+| CITYSYNC_MSG_GET_STATE | CitySyncRequest | Latest-state snapshot request |
 
-TwinSync currently processes standard updates, sensor-status messages, and state requests. The current DataAcquisition implementation sends Fire readings using `CITYSYNC_MSG_UPDATE_FLAME`, but the TwinSync receive loop does not yet implement that message handler. Fire updates therefore require an integration fix before end-to-end operation. Latency calculations require acquisition and TwinSync timestamps to use the same `CLOCK_MONOTONIC` clock domain.
+DataAcquisition connects with name_open() and sends with MsgSend(). TwinSync registers the channel with name_attach(), receives with MsgReceive(), and replies with MsgReply() or MsgError(). The updated TwinSync includes a dedicated Flame message handler and maintains Fire state separately.
+
+## QNX APIs used
+
+| API | Purpose |
+|---|---|
+| ThreadCreate(), ThreadJoin() | Create / join acquisition worker threads |
+| SyncTypeCreate(), SyncMutexLock(), SyncMutexUnlock(), SyncTypeDestroy() | Protect shared ADC and LED state |
+| name_open(), name_attach(), name_close(), name_detach() | Named channel lifecycle |
+| MsgSend(), MsgReceive(), MsgReply(), MsgError() | Inter-process messages |
+| ClockTime() | Monotonic timestamp |
+| TimerTimeout() | Absolute periodic waits in acquisition threads |
+| ConnectAttach(), TimerCreate(), TimerSettime(), TimerDestroy() | TwinSync monitor timer and pulse |
+| SchedSet() | Request QNX SCHED_FIFO priority |
+| SignalAction() | Handle SIGINT / SIGTERM |
+
+## Fault and freshness states
+
+| State | Meaning |
+|---|---|
+| UNAVAILABLE | No valid reading received, or a sensor FAILED status |
+| ACTIVE | Valid reading within its freshness timeout |
+| STALE | Last valid reading exceeded timeout, or Water returned NO_ECHO |
+
+Configured stale timeouts [Cfg]: Traffic 1500 ms, Fire 500 ms, Current 600 ms, Water 900 ms, Temperature 3000 ms. A Water NO_ECHO does not prove physical disconnection: TwinSync retains the last valid distance and marks it STALE, or UNAVAILABLE if there has never been a valid reading.
+
+## Performance monitoring
+
+TwinSync reports Updates, MinLat, AvgLat, MaxLat, MaxJit, GapMiss, LatMiss, and Rejected. The 20 ms latency threshold is configured; insert actual Raspberry Pi measurements and QNX Momentics System Profiler evidence before making performance claims.
 
 ## Repository layout
 
@@ -136,65 +128,43 @@ citysync/
 │   ├── pcf8591_adc.h
 │   ├── rpi_gpio_qnx.h
 │   └── README.md
-├── docs/
-│   ├── architecture/system-architecture.md
-│   ├── data-acquisition-flowchart.md
-│   ├── hardware-connections.md
-│   └── images/
-│       ├── circuit-wiring.webp
-│       └── data-acquisition-flowchart.webp
-├── .gitignore
-└── README.md
+└── docs/
+    ├── architecture/system-architecture.md
+    ├── data-acquisition-flowchart.md
+    ├── hardware-connections.md
+    ├── led-indicator-logic.md
+    └── images/
+        ├── circuit-wiring.webp
+        └── data-acquisition-flowchart.webp
 ```
 
-## QNX APIs and concepts
+## Hardware safety
 
-| API | Role |
-|---|---|
-| `name_attach()` | Register TwinSync named channel |
-| `name_open()` | Open named channel from acquisition |
-| `MsgSend()` | Send sensor messages |
-| `MsgReceive()` | Receive messages in TwinSync |
-| `MsgReply()` | Reply to messages |
-| `MsgError()` | Return an error to sender |
-| `ConnectAttach()` | Create connection for timer pulses |
-| `timer_create()`, `timer_settime()` | Periodic monitor timer |
-| `clock_gettime(CLOCK_MONOTONIC, ...)` | Monotonic time source |
-| `signal()` | Graceful stop request for SIGINT/SIGTERM |
+HC-SR04 ECHO can output 5 V, while Raspberry Pi GPIO inputs are not 5 V tolerant. Use a suitable voltage divider or logic-level shifter before GPIO24. Use common ground and verify module supply requirements.
 
-The code also uses standard C library functions.
+## Build and run
 
-## Hardware connections
-See [hardware-connections.md](docs/hardware-connections.md) for the pin table and electrical notes. The compressed circuit wiring and data-acquisition flowchart images are stored in `docs/images/` and displayed above.
-
-**Electrical warning:** HC-SR04 ECHO is a 5 V signal, while Raspberry Pi GPIO inputs are not 5 V tolerant. Use a suitable voltage divider or logic-level shifter before GPIO24. Connect grounds together and verify each module's supply requirements.
-
-## Build and run notes
-
-Build using the QNX SDP 8.0 toolchain configured for the target architecture. Example compilation commands (adjust compiler variant and flags to match your installation):
+Build with the QNX SDP 8.0 toolchain configured for the target architecture. Adjust compiler variant, include paths, and link options to match Momentics.
 
 ```sh
 qcc -Vgcc_ntoaarch64le -Iinclude -c src/TwinSync.c -o TwinSync.o
 qcc -Vgcc_ntoaarch64le -Iinclude -c src/DataAcquisition.c -o DataAcquisition.o
 ```
 
-Link against the required QNX libraries and target-specific driver support. Do not treat a Linux GCC build as a QNX validation.
-
-Run order:
-1. Boot QNX on Raspberry Pi 4 and confirm GPIO/I2C access.
-2. Start TwinSync so it registers `CitySyncTwin`.
-3. Start DataAcquisition.
-4. Observe sensor status, fault monitoring, and performance reports.
+Start TwinSync first so it registers CitySyncTwin, then start DataAcquisition.
 
 ## Validation checklist
-- [ ] QNX boots on Raspberry Pi 4.
-- [ ] GPIO and I2C access is available.
-- [ ] PCF8591 responds at its configured I2C address.
-- [ ] TwinSync registers `CitySyncTwin`.
-- [ ] DataAcquisition connects and sends valid sensor updates.
-- [ ] Disconnecting a sensor produces the expected unavailable/stale status.
-- [ ] Invalid and out-of-order messages are rejected.
-- [ ] Timing metrics are checked under target hardware load.
+- [ ] Build both programs with the QNX SDP 8.0 toolchain.
+- [ ] Confirm GPIO and I2C initialization on Raspberry Pi 4.
+- [ ] Confirm PCF8591 communication on /dev/i2c1.
+- [ ] Confirm all five acquisition threads start.
+- [ ] Confirm TwinSync handles all four message types.
+- [ ] Test LED1 on GPIO5 with Flame clear and detected states.
+- [ ] Test LED2 on GPIO6 below, at, and above 30 cm.
+- [ ] Test LED3 on GPIO13 below, at, and above the simulated 1500 mA threshold.
+- [ ] Confirm multiple LEDs can remain ON simultaneously.
+- [ ] Verify NO_ECHO, STALE, UNAVAILABLE, and FAILED handling.
+- [ ] Capture actual Momentics System Profiler evidence and Raspberry Pi performance results.
 
 ## License
 No licence has been selected for this repository yet.
