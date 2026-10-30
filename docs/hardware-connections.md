@@ -2,7 +2,7 @@
 
 This document records the pin connections shown in the supplied circuit diagram.
 
-![Raspberry Pi 4 sensor wiring](images/circuit-wiring.png)
+The circuit wiring diagram is included in the downloadable project ZIP at `docs/images/circuit-wiring.png`. It is not yet committed to this GitHub repository.
 
 ## Raspberry Pi 4 Pin Connections
 
